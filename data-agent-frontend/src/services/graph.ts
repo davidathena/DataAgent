@@ -85,9 +85,9 @@ class GraphService {
     eventSource.onmessage = async event => {
       try {
         const nodeResponse: GraphNodeResponse = JSON.parse(event.data);
-        console.log(
-          `Node: ${nodeResponse.nodeName}, message: ${nodeResponse.text}, type: ${nodeResponse.textType}`,
-        );
+        // console.log(
+        //   `Node: ${nodeResponse.nodeName}, message: ${nodeResponse.text}, type: ${nodeResponse.textType}`,
+        // );
         await onMessage(nodeResponse);
       } catch (parseError) {
         console.error('Failed to parse SSE data:', parseError);

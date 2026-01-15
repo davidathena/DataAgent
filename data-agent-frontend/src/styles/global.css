@@ -1309,7 +1309,7 @@ body {
 /* 暗色模式支持 */
 @media (prefers-color-scheme: dark) {
   :root {
-    --text-primary: #ffffff;
+    --text-primary: #1a1a1a;
     --text-secondary: #b3b3b3;
     --text-tertiary: #808080;
     --text-quaternary: #4d4d4d;
