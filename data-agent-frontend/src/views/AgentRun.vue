@@ -160,6 +160,25 @@
                       <ReportHtmlView v-else :content="getMarkdownContentFromNode(nodeBlock)" />
                     </div>
                   </div>
+                  <div
+                      v-if="
+                      nodeBlock.length > 0 &&
+                      nodeBlock[0].nodeName === 'ToolCallNode'
+                    "
+                      class="agent-response-block"
+                  >
+                    <div class="agent-response-title">
+                      {{ nodeBlock[0].nodeName }}
+                    </div>
+                    <div class="agent-response-content">
+                      <markdown-agent-container
+                          v-if="requestOptions.reportFormat === 'markdown'"
+                          class="md-body"
+                          :content="getMarkdownContentFromNodeTool(nodeBlock)"
+                          :options="options"
+                      />
+                    </div>
+                  </div>
                   <!-- 如果是 RESULT_SET 节点，使用 ResultSetDisplay 组件 -->
                   <div
                     v-else-if="nodeBlock.length > 0 && nodeBlock[0].textType === 'RESULT_SET'"
@@ -431,7 +450,7 @@
     },
     created() {
       window.copyTextToClipboard = btn => {
-        const text = btn.previousElementSibling.textContent;
+        const text = btn.previousElementSibling?.textContent;
         const originalText = btn.textContent;
 
         navigator.clipboard
@@ -611,7 +630,7 @@
             nl2sqlOnly: requestOptions.value.nl2sqlOnly,
             rejectedPlan: false,
             humanFeedbackContent: null,
-            threadId: sessionState.lastRequest?.threadId || null,
+            threadId: sessionState.lastRequest?.threadId || generateUUID() ,
           };
 
           userInput.value = '';
@@ -621,6 +640,15 @@
           ElMessage.error('未知错误');
           console.error(error);
         }
+      };
+
+      // 添加 UUID 生成函数
+      const generateUUID = () => {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+          const r = Math.random() * 16 | 0;
+          const v = c === 'x' ? r : (r & 0x3 | 0x8);
+          return v.toString(16);
+        });
       };
 
       const sendGraphRequest = async (request: GraphRequest, rejectedPlan: boolean) => {
@@ -1332,6 +1360,32 @@
         return markdown;
       };
 
+      const getMarkdownContentFromNodeTool = (node: GraphNodeResponse[]): string => {
+        if (!node || node.length === 0) {
+          return '';
+        }
+        // 否则从节点中提取所有 MARK_DOWN 类型的文本
+        let markdown = '';
+        for (let idx = 0; idx < node.length; idx++) {
+          if (node[idx].textType === 'MARK_DOWN') {
+            let p = idx;
+            for (; p < node.length; p++) {
+              if (node[p].textType !== 'MARK_DOWN') {
+                break;
+              }
+              markdown += node[p].text;
+            }
+            if (p < node.length) {
+              idx = p - 1;
+            } else {
+              break;
+            }
+          }
+        }
+
+        return markdown;
+      };
+
       // HTML转义函数
       const escapeHtml = (text: string): string => {
         const div = document.createElement('div');
@@ -1362,6 +1416,7 @@
         lastRequest,
         resultSetDisplayConfig,
         options,
+        getMarkdownContentFromNodeTool,
         getMarkdownContentFromNode,
         selectSession,
         sendMessage,

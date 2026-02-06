@@ -1,5 +1,5 @@
 /*
- * Copyright 2024-2026 the original author or authors.
+ * Copyright 2026 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,33 +15,36 @@
  */
 package com.alibaba.cloud.ai.dataagent.controller;
 
-import com.alibaba.cloud.ai.dataagent.dto.GraphRequest;
-import com.alibaba.cloud.ai.dataagent.service.graph.GraphService;
+
+import com.alibaba.cloud.ai.dataagent.service.aimodelconfig.AgentRegistry;
+import com.alibaba.cloud.ai.dataagent.service.react.ReactAgentService;
 import com.alibaba.cloud.ai.dataagent.vo.GraphNodeResponse;
+import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Sinks;
 
 import static com.alibaba.cloud.ai.dataagent.constant.Constant.STREAM_EVENT_COMPLETE;
 import static com.alibaba.cloud.ai.dataagent.constant.Constant.STREAM_EVENT_ERROR;
 
-/**
- * @author zhangshenghang
- * @author vlsmb
- */
 @Slf4j
 @RestController
 @AllArgsConstructor
 @CrossOrigin(origins = "*")
-@RequestMapping("/api2")
-public class GraphController {
+@RequestMapping("/api")
+public class ReactAgentController {
 
-	private final GraphService graphService;
+	private final AgentRegistry agentRegistry;
+	private final ReactAgentService reactAgentService;
 
 	@GetMapping(value = "/stream/search", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public Flux<ServerSentEvent<GraphNodeResponse>> streamSearch(@RequestParam("agentId") String agentId,
@@ -49,7 +52,8 @@ public class GraphController {
 			@RequestParam(value = "humanFeedback", required = false) boolean humanFeedback,
 			@RequestParam(value = "humanFeedbackContent", required = false) String humanFeedbackContent,
 			@RequestParam(value = "rejectedPlan", required = false) boolean rejectedPlan,
-			@RequestParam(value = "nl2sqlOnly", required = false) boolean nl2sqlOnly, HttpServletResponse response) {
+			@RequestParam(value = "nl2sqlOnly", required = false) boolean nl2sqlOnly, HttpServletResponse response)
+			throws GraphRunnerException {
 		// Set SSE-related HTTP headers
 		response.setCharacterEncoding("UTF-8");
 		response.setContentType("text/event-stream");
@@ -60,16 +64,7 @@ public class GraphController {
 
 		Sinks.Many<ServerSentEvent<GraphNodeResponse>> sink = Sinks.many().unicast().onBackpressureBuffer();
 
-		GraphRequest request = GraphRequest.builder()
-			.agentId(agentId)
-			.threadId(threadId)
-			.query(query)
-			.humanFeedback(humanFeedback)
-			.humanFeedbackContent(humanFeedbackContent)
-			.rejectedPlan(rejectedPlan)
-			.nl2sqlOnly(nl2sqlOnly)
-			.build();
-		graphService.graphStreamProcess(sink, request);
+		reactAgentService.reactStreamProcess(sink, agentId, threadId, query);
 
 		return sink.asFlux().filter(sse -> {
 			// 1. 如果 event 是 "complete" 或 "error"，直接放行（不管 text 是否为空）
@@ -79,20 +74,20 @@ public class GraphController {
 			// 判断字符串是否为空
 			return sse.data() != null && sse.data().getText() != null && !sse.data().getText().isEmpty();
 		})
-			.doOnSubscribe(subscription -> log.info("Client subscribed to stream, threadId: {}", request.getThreadId()))
+			.doOnSubscribe(subscription -> log.info("Client subscribed to stream, threadId: {}", threadId))
 			.doOnCancel(() -> {
-				log.info("Client disconnected from stream, threadId: {}", request.getThreadId());
-				if (request.getThreadId() != null) {
-					graphService.stopStreamProcessing(request.getThreadId());
+				log.info("Client disconnected from stream, threadId: {}", threadId);
+				if (threadId != null) {
+					reactAgentService.stopStreamProcessing(threadId);
 				}
 			})
 			.doOnError(e -> {
-				log.error("Error occurred during streaming, threadId: {}: ", request.getThreadId(), e);
-				if (request.getThreadId() != null) {
-					graphService.stopStreamProcessing(request.getThreadId());
+				log.error("Error occurred during streaming, threadId: {}: ", threadId, e);
+				if (threadId != null) {
+					reactAgentService.stopStreamProcessing(threadId);
 				}
 			})
-			.doOnComplete(() -> log.info("Stream completed successfully, threadId: {}", request.getThreadId()));
+			.doOnComplete(() -> log.info("Stream completed successfully, threadId: {}", threadId));
 	}
 
 }
